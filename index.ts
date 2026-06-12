@@ -8,6 +8,7 @@ import {
   Tool,
   ToolSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { realpathSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -864,10 +865,17 @@ async function runServer() {
 }
 
 // Only start the stdio server when executed directly as a binary, not when
-// imported by tests. process.argv[1] is the entrypoint script path.
-const isMain =
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+// imported by tests. npm installs bin entries as SYMLINKS (node_modules/.bin,
+// npx cache), so argv[1] must be realpath'd before comparing — path.resolve
+// alone breaks `npx @kazuph/mcp-taskmanager`.
+const isMain = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(import.meta.url) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
 
 if (isMain) {
   runServer().catch((error) => {
