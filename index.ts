@@ -11,6 +11,7 @@ import {
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 const DEFAULT_PATH = path.join(os.homedir(), "Documents", "tasks.json");
@@ -279,7 +280,7 @@ const DELETE_TASK_TOOL: Tool = {
   },
 };
 
-class TaskManagerServer {
+export class TaskManagerServer {
   private requestCounter = 0;
   private taskCounter = 0;
   private data: TaskManagerFile = { requests: [] };
@@ -318,6 +319,10 @@ class TaskManagerServer {
 
   private async saveTasks() {
     try {
+      // Ensure the parent directory exists before writing. Without this,
+      // environments where the default dir is absent (Docker /root/Documents,
+      // CI runners, fresh OS profiles) fail with ENOENT. See issue #4.
+      await fs.mkdir(path.dirname(TASK_FILE_PATH), { recursive: true });
       await fs.writeFile(
         TASK_FILE_PATH,
         JSON.stringify(this.data, null, 2),
@@ -858,7 +863,15 @@ async function runServer() {
   );
 }
 
-runServer().catch((error) => {
-  console.error("Fatal error running server:", error);
-  process.exit(1);
-});
+// Only start the stdio server when executed directly as a binary, not when
+// imported by tests. process.argv[1] is the entrypoint script path.
+const isMain =
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+
+if (isMain) {
+  runServer().catch((error) => {
+    console.error("Fatal error running server:", error);
+    process.exit(1);
+  });
+}
